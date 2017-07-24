@@ -88,7 +88,8 @@ class PurchaseOrderLinePlanningImproved(models.Model):
                 min_date = fields.Datetime.from_string(min([p.date_planned for p in rec.procurement_ids]))
                 min_proc = rec.procurement_ids.filtered(lambda proc: str(proc.date_planned) == str(min_date))[0]
                 if min_proc.rule_id:
-                    date_required = self.env['procurement.order']._get_purchase_schedule_date(min_proc, rec.company_id)
+                    date_required = self.env['procurement.order'].with_context(do_not_save_result=True). \
+                        _get_purchase_schedule_date(min_proc, rec.company_id)
                 else:
                     date_required = min_date
             else:
@@ -110,11 +111,12 @@ class PurchaseOrderLinePlanningImproved(models.Model):
                     vals['requested_date'] = vals['date_planned']
         result = super(PurchaseOrderLinePlanningImproved, self).write(vals)
         if vals.get('date_planned'):
+            date = vals.get('date_planned') + " 12:00:00"
             for line in self:
-                if line.move_ids:
-                    date = vals.get('date_planned') + " 12:00:00"
-                    if line.procurement_ids:
-                        line.move_ids.write({'date_expected': date})
-                    else:
-                        line.move_ids.write({'date_expected': date, 'date': date})
+                moves = self.env['stock.move'].search([('purchase_line_id', '=', line.id),
+                                                       ('state', 'not in', ['done', 'cancel'])])
+                if line.procurement_ids:
+                    moves.write({'date_expected': date})
+                else:
+                    moves.write({'date_expected': date, 'date': date})
         return result

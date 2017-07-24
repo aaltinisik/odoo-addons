@@ -38,7 +38,34 @@ class QueueJob(models.Model):
         worker_real_limit_seconds = config.parser.get_option_group('limit_time_real') or 120
         jobs_to_enqueue = self
         for job in started_jobs:
-            time_delta_seconds = (dt.now() - fields.Datetime.from_string(job.date_started)).seconds
+            ref_date = job.eta or job.date_started
+            time_delta_seconds = (dt.now() - fields.Datetime.from_string(ref_date)).seconds
             if time_delta_seconds > worker_real_limit_seconds:
                 jobs_to_enqueue |= job
         jobs_to_enqueue.requeue()
+
+    @api.multi
+    def _subscribe_users(self):
+        """ Subscribe all users having the 'Connector Manager' group """
+        group = self.env.ref('connector_improved.group_connector_real_manager')
+        if not group:
+            return
+        companies = self.mapped('company_id')
+        domain = [('groups_id', '=', group.id)]
+        if companies:
+            domain.append(('company_id', 'child_of', companies.ids))
+        users = self.env['res.users'].search(domain)
+        self.message_subscribe_users(user_ids=users.ids)
+
+
+class ConnectorCheckpointImproved(models.Model):
+    _inherit = 'connector.checkpoint'
+
+    @api.multi
+    def _subscribe_users(self):
+        """ Subscribe all users having the 'Connector Manager' group """
+        group = self.env.ref('connector_improved.group_connector_real_manager')
+        if not group:
+            return
+        users = self.env['res.users'].search([('groups_id', '=', group.id)])
+        self.message_subscribe_users(user_ids=users.ids)

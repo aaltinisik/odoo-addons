@@ -273,6 +273,10 @@ FROM (
 class StockQuantPackageImproved(models.Model):
     _inherit = "stock.quant.package"
 
+    _sql_constraints = [
+        ('name_uniq', 'unique (name)', 'The name of the package must be unique!')
+    ]
+
     def _get_all_products_quantities(self, cr, uid, package_id, context=None):
         '''This function computes the different product quantities for the given package
         '''
@@ -285,6 +289,21 @@ class StockQuantPackageImproved(models.Model):
                 res[quant["product_id"]] = 0
             res[quant["product_id"]] += quant["qty"]
         return res
+
+    @api.multi
+    def open_bulk_content(self):
+        self.ensure_one()
+        ctx = self.env.context.copy()
+        ctx['search_default_productgroup'] = True
+        return {
+            'name': _("Bulk content for package %s") % self.name,
+            'type': 'ir.actions.act_window',
+            'view_type': 'form',
+            'view_mode': 'tree',
+            'res_model': 'stock.quant',
+            'domain': [('package_id', '=', self.id)],
+            'context': ctx,
+        }
 
 
 class stock_pack_operation(models.Model):
@@ -339,6 +358,12 @@ class stock_pack_operation(models.Model):
     def sort_operations_for_transfer(self):
         return sorted(self, key=lambda x: ((x.package_id and not x.product_id) and -4 or 0) +
                                           (x.package_id and -2 or 0) + (x.lot_id and -1 or 0))
+
+
+class StockPickingType(models.Model):
+    _inherit = 'stock.picking.type'
+
+    visible_for_all_companies = fields.Boolean(string="Visible for all companies")
 
 
 class StockPicking(models.Model):
@@ -495,7 +520,8 @@ class StockPicking(models.Model):
                                                       'operation_id': operation_id,
                                                       'qty': qty_on_link,
                                                       'reserved_quant_id': quant_id})
-        if move_dict['remaining_qty'] == qty_on_link:
+        rounding = self.env['product.product'].browse(product_id).uom_id.rounding
+        if float_compare(move_dict['remaining_qty'], qty_on_link, precision_rounding=rounding) == 0:
             prod2move_ids[product_id].pop(index)
         else:
             move_dict['remaining_qty'] -= qty_on_link
@@ -628,8 +654,141 @@ ORDER BY poids ASC,""" + self.pool.get('stock.move')._order + """
         if context.get("test_transfer"):
             test = super(StockPicking, self).recompute_remaining_qty(cr, uid, picking, context=context)
             if test != (need_rereserve, all_op_processed):
-                raise osv.except_osv('test temps do_transfer!', "recompute_remaining_qty")
+                raise osv.except_osv(_('test temps do_transfer!'), "recompute_remaining_qty")
         return (need_rereserve, all_op_processed)
+
+    @api.model
+    def add_packop_values(self, vals, prevals):
+        self.ensure_one()
+        processed_products = set()
+        for move in [x for x in self.move_lines if x.state not in ('done', 'cancel')]:
+            if move.product_id.id not in processed_products:
+                vals += prevals.get(move.product_id.id, [])
+                processed_products.add(move.product_id.id)
+        return vals
+
+    @api.multi
+    def recalculate_forced_qties_with_uom(self):
+        forced_qties = {}  # Quantity remaining after calculating reserved quants
+        picking_quants = []
+        for move in self.move_lines:
+            if move.state not in ('assigned', 'confirmed', 'waiting'):
+                continue
+            move_quants = move.reserved_quant_ids
+            picking_quants += move_quants
+            forced_qty = 0
+            if move.state == 'assigned':
+                forced_qty = move.product_uom_qty
+                for quant in move_quants:
+                    forced_qty -= move.product_id.uom_id._compute_qty_obj(move.product_id.uom_id, quant.qty,
+                                                                          move.product_uom)
+            # if we used force_assign() on the move, or if the move is incoming, forced_qty > 0
+            if float_compare(forced_qty, 0, precision_rounding=move.product_id.uom_id.rounding) > 0:
+                key = (move.product_id, move.product_uom)
+                if forced_qties.get(key):
+                    forced_qties[key] += forced_qty
+                else:
+                    forced_qties[key] = forced_qty
+        return forced_qties, picking_quants
+
+    @api.model
+    def _prepare_pack_ops(self, picking, quants, forced_qties):
+        """ returns a list of dict, ready to be used in create() of stock.pack.operation."""
+
+        def _picking_putaway_apply(product):
+            # Search putaway strategy
+            if product_putaway_strats.get(product.id):
+                location = product_putaway_strats[product.id]
+            else:
+                location = self.env['stock.location'].get_putaway_strategy(picking.location_dest_id, product)
+                product_putaway_strats[product.id] = location
+            return location or picking.location_dest_id.id
+
+        # Let's recalculate forced qties to get initial UOMs
+        forced_qties, picking_quants = picking.recalculate_forced_qties_with_uom()
+
+        # If we encounter an UoM that is smaller than the default UoM or the one already chosen, use the new one.
+        location_dest_id = None
+        location_id = None
+        for move in [x for x in picking.move_lines if x.state not in ('done', 'cancel')]:
+            if not move.scrapped:
+                if location_dest_id and move.location_dest_id.id != location_dest_id:
+                    raise Warning(_('The destination location must be the same for all the moves of the picking.'))
+                location_dest_id = move.location_dest_id.id
+                if location_id and move.location_id.id != location_id:
+                    raise Warning(_('The source location must be the same for all the moves of the picking.'))
+                location_id = move.location_id.id
+
+        vals = []
+        qtys_grouped = {}
+        # for each quant of the picking, find the suggested location
+        quants_suggested_locations = {}
+        product_putaway_strats = {}
+        for quant in quants:
+            if quant.qty <= 0:
+                continue
+            suggested_location_id = _picking_putaway_apply(quant.product_id)
+            quants_suggested_locations[quant] = suggested_location_id
+
+        # find the packages we can movei as a whole
+        top_lvl_packages = self._get_top_level_packages(quants_suggested_locations)
+        # and then create pack operations for the top-level packages found
+        for pack in top_lvl_packages:
+            pack_quants = self.env['stock.quant'].browse(pack.get_content())
+            vals.append({
+                'picking_id': picking.id,
+                'package_id': pack.id,
+                'product_qty': 1.0,
+                'location_id': pack.location_id.id,
+                'location_dest_id': quants_suggested_locations[pack_quants[0]],
+                'owner_id': pack.owner_id.id,
+            })
+            # remove the quants inside the package so that they are excluded from the rest of the computation
+            for quant in pack_quants:
+                del quants_suggested_locations[quant]
+
+        # Go through all remaining reserved quants and group by product, package, lot, owner, source location and dest
+        # location
+        for quant, dest_location_id in quants_suggested_locations.items():
+            key = (quant.product_id.id, quant.package_id.id, quant.lot_id.id, quant.owner_id.id, quant.location_id.id,
+                   dest_location_id, quant.product_id.uom_id.id)
+            if qtys_grouped.get(key):
+                qtys_grouped[key] += quant.qty
+            else:
+                qtys_grouped[key] = quant.qty
+
+        # Do the same for the forced quantities (in cases of force_assign or incomming shipment for example)
+        for (product, uom), qty in forced_qties.items():
+            if qty <= 0:
+                continue
+            suggested_location_id = _picking_putaway_apply(product)
+            key = (product.id, False, False, picking.owner_id.id, picking.location_id.id, suggested_location_id, uom.id)
+            if qtys_grouped.get(key):
+                qtys_grouped[key] += qty
+            else:
+                qtys_grouped[key] = qty
+
+        # Create the necessary operations for the grouped quants and remaining qtys
+        prevals = {}
+        for key, qty in qtys_grouped.items():
+            val_dict = {
+                'picking_id': picking.id,
+                'product_qty': qty,
+                'product_id': key[0],
+                'package_id': key[1],
+                'lot_id': key[2],
+                'owner_id': key[3],
+                'location_id': key[4],
+                'location_dest_id': key[5],
+                'product_uom_id': key[6],
+            }
+            if key[0] in prevals:
+                prevals[key[0]].append(val_dict)
+            else:
+                prevals[key[0]] = [val_dict]
+        # prevals var holds the operations in order to create them in the same order than the picking stock moves if
+        # possible
+        return picking.add_packop_values(vals, prevals)
 
     @api.cr_uid_context
     def _get_top_level_packages(self, cr, uid, quants_suggested_locations, context=None):
@@ -680,6 +839,27 @@ ORDER BY poids ASC,""" + self.pool.get('stock.move')._order + """
             if good_pack:
                 top_lvl_packages.add(good_pack)
         return list(top_lvl_packages)
+
+    @api.model
+    def delete_empty_pickings(self):
+        self.env.cr.execute("""WITH nb_moves_picking AS (
+    SELECT
+        sp.id,
+        count(sm.id) AS nb_moves
+    FROM stock_picking sp
+        LEFT JOIN stock_move sm ON sm.picking_id = sp.id
+    WHERE sp.state NOT IN ('done', 'cancel')
+    GROUP BY sp.id)
+
+SELECT id
+FROM nb_moves_picking
+WHERE nb_moves = 0""")
+        picking_ids = [item[0] for item in self.env.cr.fetchall()]
+        if picking_ids:
+            pickings = self.env['stock.picking'].browse(picking_ids)
+            packops = self.env['stock.pack.operation'].search([('picking_id', 'in', picking_ids)])
+            packops.unlink()
+            pickings.unlink()
 
     @api.cr_uid_ids_context
     def _get_pickings_dates_priority(self, cr, uid, ids, context=None):
@@ -898,7 +1078,12 @@ class ProcurementOrder(models.Model):
 
     @api.model
     def run_assign_moves(self):
-        prereservations = self.env['stock.prereservation'].search([('reserved', '=', False)])
+        dom = [('reserved', '=', False)]
+        if self.env.context.get('assign_in_location_ids'):
+            dom += [('location_id', 'in', self.env.context['assign_in_location_ids'])]
+        if self.env.context.get('no_assign_in_location_ids'):
+            dom += [('location_id', 'not in', self.env.context['no_assign_in_location_ids'])]
+        prereservations = self.env['stock.prereservation'].search(dom)
         confirmed_move_ids = prereservations.read(['move_id'], load=False)
         move_ids = [cm['id'] for cm in confirmed_move_ids]
         confirmed_moves = self.env['stock.move'].search([('id', 'in', move_ids)], limit=None,
@@ -918,9 +1103,9 @@ class ProcurementOrder(models.Model):
             product_ids = product_ids[PRODUCT_CHUNK:]
             move_ids = flatten(products)
             if self.env.context.get('jobify'):
-                assign_moves.delay(ConnectorSession.from_env(self.env), 'stock.move', move_ids, self.env.context)
+                assign_moves.delay(ConnectorSession.from_env(self.env), 'stock.move', move_ids, dict(self.env.context))
             else:
-                assign_moves(ConnectorSession.from_env(self.env), 'stock.move', move_ids, self.env.context)
+                assign_moves(ConnectorSession.from_env(self.env), 'stock.move', move_ids, dict(self.env.context))
 
 
 class StockPrereservation(models.Model):
@@ -929,6 +1114,7 @@ class StockPrereservation(models.Model):
     _auto = False
 
     move_id = fields.Many2one('stock.move', readonly=True, index=True)
+    location_id = fields.Many2one('stock.location', readonly=True, index=True)
     picking_id = fields.Many2one('stock.picking', readonly=True, index=True)
     reserved = fields.Boolean("Move has reserved quants", readonly=True, index=True)
 
@@ -972,6 +1158,7 @@ class StockPrereservation(models.Model):
             moves_with_quants_reserved AS (
                 SELECT
                     sm.id,
+                    sm.location_id,
                     sm.picking_type_id,
                     sm.picking_id
                 FROM stock_move sm
@@ -1017,11 +1204,13 @@ class StockPrereservation(models.Model):
             SELECT
                 foo.move_id AS id,
                 foo.move_id,
+                foo.location_id,
                 foo.picking_id,
                 foo.reserved
             FROM (
                     SELECT
                         sm.id AS move_id,
+                        sm.location_id AS location_id,
                         sm.picking_id AS picking_id,
                         TRUE AS reserved
                     FROM
@@ -1030,6 +1219,7 @@ class StockPrereservation(models.Model):
                 UNION ALL
                     SELECT DISTINCT
                         sm.id AS move_id,
+                        sm.location_id AS location_id,
                         sm.picking_id AS picking_id,
                         FALSE AS reserved
                     FROM
@@ -1044,15 +1234,17 @@ class StockPrereservation(models.Model):
                 UNION ALL
                     SELECT
                         mq.move_id,
+                        mq.location_id,
                         mq.picking_id,
                         FALSE AS reserved
                     FROM move_qties mq
                     WHERE mq.qty <= mq.sum_qty
                 UNION ALL
                     SELECT
-                        sm.id         AS move_id,
-                        sm.picking_id AS picking_id,
-                        FALSE         AS reserved
+                        sm.id          AS move_id,
+                        sm.location_id AS location_id,
+                        sm.picking_id  AS picking_id,
+                        FALSE          AS reserved
                     FROM stock_move sm
                     WHERE sm.state = 'confirmed'
                         AND sm.picking_type_id IS NOT NULL

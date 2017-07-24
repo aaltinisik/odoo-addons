@@ -28,16 +28,15 @@ class ReceptionByOrderPurchaseOrder(models.Model):
         for rec in self:
             number = 10
             for line in rec.order_line:
-                line.line_no = str(number)
+                line.line_no = "%03d" % number
                 number += 10
 
     @api.multi
     def do_merge(self):
         result = super(ReceptionByOrderPurchaseOrder, self).do_merge()
-        assert len(result.keys()) == 1, "Error: multiple children purchase orders in do_merge result"
-        assert isinstance(result.keys()[0], int), "Error, type is not integer: wrong value for id"
-        children_po = self.env['purchase.order'].browse(result.keys()[0])
-        children_po.renumerate_lines()
+        if len(result.keys()) == 1 and isinstance(result.keys()[0], int):
+            children_po = self.env['purchase.order'].browse(result.keys()[0])
+            children_po.renumerate_lines()
         return result
 
 
@@ -68,5 +67,5 @@ class ReceptionByOrderPurchaseOrderLine(models.Model):
             maximum = list_line_no and max(list_line_no) or 0
             if maximum >= theo_value or theo_value in list_line_no:
                 theo_value = maximum + 10
-            vals['line_no'] = str(theo_value)
+            vals['line_no'] = "%03d" % theo_value
         return super(ReceptionByOrderPurchaseOrderLine, self).create(vals)

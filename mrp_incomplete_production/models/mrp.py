@@ -73,6 +73,23 @@ class IncompeteProductionMrpProduction(models.Model):
             rec.warehouse_id = warehouse_id
 
     @api.model
+    def _get_consumed_data(self, production):
+        ''' returns a dictionary containing for each raw material of the given production, its quantity already
+        consumed (in the raw material UoM)
+
+        Overridden here to remove cancel moves from the calculation
+        '''
+        consumed_data = {}
+        # Calculate already consumed qtys
+        for consumed in production.move_lines2:
+            if consumed.scrapped or consumed.state == "cancel":
+                continue
+            if not consumed_data.get(consumed.product_id.id, False):
+                consumed_data[consumed.product_id.id] = 0
+            consumed_data[consumed.product_id.id] += consumed.product_qty
+        return consumed_data
+
+    @api.model
     def _calculate_qty(self, production, product_qty=0.0):
         produced_qty = self._get_produced_qty(production)
         list_keys = []
@@ -103,7 +120,8 @@ class IncompeteProductionMrpProduction(models.Model):
                                                                   ('lot_id', '=', key[1] or False)])
                 reserved_qty = sum([quant.qty for quant in reserved_quants])
                 final_qty = min(reserved_qty, total_consume)
-                if float_compare(final_qty, 0, self.env['decimal.precision'].precision_get('Product Unit of Measure')) != 0:
+                if float_compare(final_qty, 0,
+                                 self.env['decimal.precision'].precision_get('Product Unit of Measure')) != 0:
                     new_consume_lines += [{'product_id': key[0], 'lot_id': key[1], 'product_qty': final_qty}]
                 list_keys += [key]
         return new_consume_lines
@@ -145,7 +163,7 @@ class IncompeteProductionMrpProduction(models.Model):
             action_produce(production_id, production_qty, production_mode, wiz=wiz)
         list_cancelled_moves = production.move_lines2. \
             filtered(lambda move: move.state == 'cancel' and move not in list_cancelled_moves_1)
-        if len(list_cancelled_moves) != 0 and wiz.create_child:
+        if len(list_cancelled_moves) != 0 and wiz and wiz.create_child:
             production_data = production._get_child_order_data(wiz)
             production.action_production_end()
             new_production = self.env['mrp.production'].create(production_data)
@@ -160,24 +178,25 @@ class IncompeteProductionMrpProduction(models.Model):
             for move in list_cancelled_moves:
                 quants_to_return |= self.env['stock.quant'].search([('location_id', '=', move.location_id.id),
                                                                     ('product_id', '=', move.product_id.id)]). \
-                    filtered(lambda q: any([m.move_dest_id.raw_material_production_id == \
+                    filtered(lambda q: any([m.move_dest_id.raw_material_production_id ==
                                             move.raw_material_production_id for m in q.history_ids]))
             return_picking_type = self.env.context.get('force_return_picking_type') or \
-                                  move.get_return_picking_id()
+                move.get_return_picking_id()
             if not return_picking_type:
                 raise exceptions.except_orm(_("Error!"), _("Impossible to determine return picking type"))
             return_moves = quants_to_return.move_to(dest_location=wiz.return_location_id,
-                                                    picking_type_id=return_picking_type)
+                                                    picking_type=return_picking_type)
             for item in return_moves:
                 picking_to_change_origin |= item.picking_id
             picking_to_change_origin.write({'origin': production.name})
         procurements_to_cancel = self.env['procurement.order']
-        # Let's cancel old service moves
-        for move in initial_raw_moves:
-            procurements_to_cancel |= self.env['procurement.order'].search([('move_dest_id', '=', move.id),
-                                                                            ('state', 'not in', ['cancel', 'done'])])
-        if procurements_to_cancel:
-            procurements_to_cancel.cancel()
+        # Let's cancel old service moves if the MO is produced
+        if production_mode == 'consume_produce':
+            procurements_to_cancel |= self.env[
+                'procurement.order'].search([('move_dest_id', 'in', initial_raw_moves.ids),
+                                             ('state', 'not in', ['cancel', 'done'])])
+            if procurements_to_cancel:
+                procurements_to_cancel.cancel()
         return result
 
     @api.model
@@ -189,15 +208,15 @@ class IncompeteProductionMrpProduction(models.Model):
 
     @api.multi
     def button_update(self):
-        self.ensure_one()
-        if not self.backorder_id:
-            self._action_compute_lines()
-            self.update_moves()
+        orders_no_backorder = self.search([('id', 'in', self.ids),
+                                           ('backorder_id', '=', False)])
+        orders_no_backorder._action_compute_lines()
+        orders_no_backorder.update_moves()
 
     @api.multi
     def action_assign(self):
         result = super(IncompeteProductionMrpProduction, self).action_assign()
         for order in self:
             if any([move.reserved_quant_ids for move in order.move_lines]):
-                 order.signal_workflow('moves_ready')
+                order.signal_workflow('moves_ready')
         return result
