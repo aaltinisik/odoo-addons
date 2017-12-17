@@ -18,7 +18,9 @@
 #
 
 from openerp.addons.connector.queue.job import job
+from . import partner
 from openerp.addons.connector.session import ConnectorSession, ConnectorSessionHandler
+from openerp.osv import fields as old_api_fields
 
 from openerp import models, fields, api, _
 from openerp.tools.float_utils import float_round
@@ -37,6 +39,9 @@ class SupplyChainControl(models.Model):
     _name = 'supply.chain.control'
 
     product_id = fields.Many2one('product.product', string=u"Product")
+    seller_defined = fields.Boolean(string=u"Seller defined")
+    main_seller_id = fields.Many2one('res.partner', string=u"Main seller")
+    scheduler_active_for_seller = fields.Boolean(string=u"Scheduler active for seller")
     virtual_available = fields.Float(string=u"Forecast Quantity")
     draft_orders_qty = fields.Float(string=u"Draft orders quantity")
     oversupply_qty = fields.Float(string=u"Scheduler Oversupply quantity")
@@ -51,11 +56,11 @@ class SupplyChainControl(models.Model):
         index = 0
         while products:
             index += 1
-            chunk_products = products[:10]
-            products = products[10:]
+            chunk_products = products[:500]
+            products = products[500:]
             session = ConnectorSession(self.env.cr, self.env.uid, self.env.context)
             job_update_supply_chain_controls.delay(session, 'product.product', chunk_products.ids,
-                                                   description="Update Sypply Chain Control (chunk %s)" % index,
+                                                   description="Update Supply Chain Control (chunk %s)" % index,
                                                    context=dict(self.env.context))
 
     @api.multi
@@ -83,7 +88,7 @@ class SupplyChainControl(models.Model):
             'res_model': 'purchase.order.line',
             'name': _("Purchase order lines for product %s") % self.product_id.display_name,
             'view_type': 'form',
-            'view_mode': 'tree',
+            'view_mode': 'tree,form',
             'context': {'search_default_product_id': self.product_id.id}
         }
 
@@ -95,7 +100,7 @@ class SupplyChainControl(models.Model):
             'res_model': 'stock.move',
             'name': _("Moves for product %s") % self.product_id.display_name,
             'view_type': 'form',
-            'view_mode': 'tree',
+            'view_mode': 'tree,form',
             'context': {'search_default_product_id': self.product_id.id,
                         'search_default_ready': True,
                         'search_default_future': True,
@@ -111,7 +116,7 @@ class SupplyChainControl(models.Model):
             'res_model': 'procurement.order',
             'name': _("Procurements for product %s") % self.product_id.display_name,
             'view_type': 'form',
-            'view_mode': 'tree',
+            'view_mode': 'tree,form',
             'context': {'search_default_product_id': self.product_id.id,
                         'search_default_group_procs_by_location': True,
                         'search_default_group_procs_by_state': True}
@@ -121,7 +126,10 @@ class SupplyChainControl(models.Model):
 class ProductTemplateJit(models.Model):
     _inherit = 'product.template'
 
-    seller_id = fields.Many2one(compute='_compute_seller_id', store=True)
+    _columns = {
+        'seller_id': old_api_fields.many2one('res.partner', string='Main Supplier',
+                                             help="Main Supplier who has highest priority in Supplier List."),
+    }
 
     @api.multi
     def get_main_supplierinfo(self, force_company=None):
@@ -131,12 +139,44 @@ class ProductTemplateJit(models.Model):
             supplier_infos_domain += ['|', ('company_id', '=', force_company.id), ('company_id', '=', False)]
         return self.env['product.supplierinfo'].search(supplier_infos_domain, order='sequence, id', limit=1)
 
-    @api.multi
-    @api.depends('seller_ids', 'seller_ids.sequence')
-    def _compute_seller_id(self):
-        for rec in self:
-            main_supplierinfo = rec.get_main_supplierinfo()
-            rec.seller_id = main_supplierinfo and main_supplierinfo.name or False
+    @api.model
+    def update_seller_ids(self):
+        self.env.cr.execute("""WITH main_supplier_intermediate_table AS (
+    SELECT
+        pt.id            AS product_tmpl_id,
+        min(ps.sequence) AS sequence
+    FROM product_template pt
+        LEFT JOIN product_supplierinfo ps ON ps.product_tmpl_id = pt.id
+    GROUP BY pt.id),
+
+        main_supplier_s AS (
+        SELECT
+            ps.product_tmpl_id,
+            ps.name,
+            ROW_NUMBER()
+            OVER (PARTITION BY ps.product_tmpl_id
+                ORDER BY ps.id ASC) AS constr
+        FROM
+            product_supplierinfo ps
+            INNER JOIN
+            main_supplier_intermediate_table ms
+                ON ps.product_tmpl_id = ms.product_tmpl_id AND ps.sequence = ms.sequence)
+
+SELECT
+    pt.id          AS product_tmpl_id,
+    res_partner.id AS new_seller_id
+FROM product_template pt
+    LEFT JOIN main_supplier_s ON main_supplier_s.product_tmpl_id = pt.id
+    LEFT JOIN res_partner ON res_partner.id = main_supplier_s.name
+    LEFT JOIN res_users ON res_partner.user_id = res_users.id
+WHERE (res_partner.id IS NULL OR main_supplier_s.constr = 1) AND
+      ((res_partner.id IS NULL AND pt.seller_id IS NOT NULL OR res_partner.id IS NOT NULL AND pt.seller_id IS NULL OR
+        res_partner.id != pt.seller_id))""")
+        for res_tuple in self.env.cr.fetchall():
+            product = self.browse(res_tuple[0])
+            supplier = self.env['res.partner'].browse(res_tuple[1])
+            product.seller_id = supplier
+        self.env['product.product'].update_seller_ids()
 
 
 class SupplyChainControlProductProduct(models.Model):
@@ -144,18 +184,58 @@ class SupplyChainControlProductProduct(models.Model):
 
     seller_id = fields.Many2one(related='product_tmpl_id.seller_id', store=True, readonly=True)
 
+    @api.model
+    def update_seller_ids(self):
+        return False
+
     @api.multi
-    def get_available_qty_supply_control(self):
+    def get_main_supplierinfo(self, force_company=None):
         self.ensure_one()
-        return self.virtual_available
+        return self.product_tmpl_id.get_main_supplierinfo(force_company=force_company)
+
+    @api.multi
+    def get_available_qty_supply_control(self, available_quantities):
+        return available_quantities
+
+    @api.multi
+    def get_missing_date(self):
+        self.ensure_one()
+        warehouse = self.get_warehouse_for_stock_report()
+        level_report = self.env['stock.levels.report'].search([('warehouse_id', '=', warehouse.id),
+                                                               ('product_id', '=', self.id),
+                                                               ('qty', '<', 0)], order='date', limit=1)
+        return level_report and level_report.date and level_report.date[:10] or False
+
+    @api.multi
+    def get_supplier_scheduler_data(self):
+        self.ensure_one()
+        seller_defined = True
+        scheduler_active_for_seller = True
+        companies = self.env['res.company'].search([])
+        main_supplierinfo = self.get_main_supplierinfo()
+        for company in companies:
+            if seller_defined:
+                supplierinfo = self.get_main_supplierinfo(force_company=company)
+                seller = supplierinfo and supplierinfo.name or False
+                if not seller:
+                    seller_defined = False
+                    scheduler_active_for_seller = False
+                elif scheduler_active_for_seller:
+                    if seller not in self.env['res.partner'].search(partner.DOMAIN_PARTNER_ACTIVE_SCHEDULER):
+                        scheduler_active_for_seller = False
+        return main_supplierinfo, seller_defined, scheduler_active_for_seller
 
     @api.multi
     def update_supply_chain_control(self):
+        available_quantities = self._product_available()
+        available_quantities = self.get_available_qty_supply_control(available_quantities)
         for product in self:
             draft_orders_qty = 0
-            virtual_available = product.get_available_qty_supply_control()
-            draft_lines = self.env['purchase.order.line'].search([('order_id.state', '=', 'draft'),
-                                                                  ('product_id', '=', product.id)])
+            virtual_available = available_quantities.get(product.id) and \
+                available_quantities[product.id].get('virtual_available', 0)
+            draft_lines = self.env['purchase.order.line']. \
+                search([('order_id.state', 'in', ['draft', 'bid', 'sent', 'confirmed']),
+                        ('product_id', '=', product.id)])
             done_uoms = []
             for line in draft_lines:
                 uom = line.product_uom
@@ -169,18 +249,19 @@ class SupplyChainControlProductProduct(models.Model):
                     else:
                         draft_orders_qty += self.env['product.uom']._compute_qty(uom.id, lines_uom_qty,
                                                                                  product.uom_id.id)
-            warehouse = product.get_warehouse_for_stock_report()
-            level_report = self.env['stock.levels.report'].search([('warehouse_id', '=', warehouse.id),
-                                                                   ('product_id', '=', product.id),
-                                                                   ('qty', '<', 0)], order='date', limit=1)
             prec = product.uom_id.rounding
+            missing_date = product.get_missing_date()
+            main_supplierinfo, seller_defined, scheduler_active_for_seller = product.get_supplier_scheduler_data()
             self.env['supply.chain.control'].create(
                 {'product_id': product.id,
+                 'seller_defined': seller_defined,
+                 'main_seller_id': main_supplierinfo and main_supplierinfo.name.id or False,
+                 'scheduler_active_for_seller': scheduler_active_for_seller,
                  'virtual_available': float_round(virtual_available, precision_rounding=prec),
                  'draft_orders_qty': float_round(draft_orders_qty, precision_rounding=prec),
                  'oversupply_qty': float_round(min(draft_orders_qty + virtual_available, draft_orders_qty),
                                                precision_rounding=prec),
-                 'missing_date': level_report and level_report.date and level_report.date[:10] or False}
+                 'missing_date': missing_date}
             )
 
     @api.multi
