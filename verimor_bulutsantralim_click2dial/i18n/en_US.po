@@ -6,8 +6,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 16.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-02-14 06:45+0000\n"
-"PO-Revision-Date: 2025-02-14 06:45+0000\n"
+"POT-Creation-Date: 2025-01-31 05:25+0000\n"
+"PO-Revision-Date: 2025-01-31 05:25+0000\n"
 "Last-Translator: \n"
 "Language-Team: \n"
 "MIME-Version: 1.0\n"
@@ -18,12 +18,12 @@ msgstr ""
 #. module: verimor_bulutsantralim_click2dial
 #: model:ir.model.fields,field_description:verimor_bulutsantralim_click2dial.field_bulutsantralim_connector__active
 msgid "Active?"
-msgstr "Active?"
+msgstr ""
 
 #. module: verimor_bulutsantralim_click2dial
 #: model_terms:ir.ui.view,arch_db:verimor_bulutsantralim_click2dial.view_bulutsantralim_connector_search
 msgid "Archived"
-msgstr "Archived"
+msgstr ""
 
 #. module: verimor_bulutsantralim_click2dial
 #: model:ir.actions.act_window,name:verimor_bulutsantralim_click2dial.action_bulutsantralim_connector
@@ -31,74 +31,74 @@ msgstr "Archived"
 #: model:ir.ui.menu,name:verimor_bulutsantralim_click2dial.act_menu_bulutsantralim_server
 #: model_terms:ir.ui.view,arch_db:verimor_bulutsantralim_click2dial.view_bulutsantralim_connector_form
 msgid "Bulutsantralim Connector"
-msgstr "Bulutsantralim Connector"
+msgstr ""
 
 #. module: verimor_bulutsantralim_click2dial
 #: model:ir.model.fields,field_description:verimor_bulutsantralim_click2dial.field_bulutsantralim_connector__name
 msgid "Bulutsantralim Connector Name"
-msgstr "Bulutsantralim Connector Name"
+msgstr ""
 
 #. module: verimor_bulutsantralim_click2dial
 #: model_terms:ir.ui.view,arch_db:verimor_bulutsantralim_click2dial.view_bulutsantralim_connector_search
 msgid "Bulutsantralim Server Search"
-msgstr "Bulutsantralim Server Search"
+msgstr ""
 
 #. module: verimor_bulutsantralim_click2dial
 #: model:ir.model.fields,help:verimor_bulutsantralim_click2dial.field_res_company__bulutsantralim_connector_id
 msgid "Bulutsantralim connector for this company."
-msgstr "Bulutsantralim connector for this company."
+msgstr ""
 
 #. module: verimor_bulutsantralim_click2dial
 #: model:ir.model.fields,field_description:verimor_bulutsantralim_click2dial.field_bulutsantralim_connector__call_timeout
 msgid "Call Timout"
-msgstr "Call Timout"
+msgstr ""
 
 #. module: verimor_bulutsantralim_click2dial
 #. odoo-python
 #: code:addons/verimor_bulutsantralim_click2dial/models/bulutsantralim_connector.py:0
 #, python-format
 msgid "Call rejected."
-msgstr "Call rejected."
+msgstr ""
 
 #. module: verimor_bulutsantralim_click2dial
 #: model:ir.model.constraint,message:verimor_bulutsantralim_click2dial.constraint_bulutsantralim_connector_check_call_timeout
 msgid "Call timeout must be between 10 and 60."
-msgstr "Call timeout must be between 10 and 60."
+msgstr ""
 
 #. module: verimor_bulutsantralim_click2dial
 #: model:ir.model,name:verimor_bulutsantralim_click2dial.model_phone_common
 msgid "Common methods for phone features"
-msgstr "Common methods for phone features"
+msgstr ""
 
 #. module: verimor_bulutsantralim_click2dial
 #: model:ir.model,name:verimor_bulutsantralim_click2dial.model_res_company
 msgid "Companies"
-msgstr "Companies"
+msgstr ""
 
 #. module: verimor_bulutsantralim_click2dial
 #: model_terms:ir.ui.view,arch_db:verimor_bulutsantralim_click2dial.view_bulutsantralim_connector_form
 msgid "Connector Name"
-msgstr "Connector Name"
+msgstr ""
 
 #. module: verimor_bulutsantralim_click2dial
 #: model:ir.model.fields,field_description:verimor_bulutsantralim_click2dial.field_bulutsantralim_connector__create_uid
 msgid "Created by"
-msgstr "Created by"
+msgstr ""
 
 #. module: verimor_bulutsantralim_click2dial
 #: model:ir.model.fields,field_description:verimor_bulutsantralim_click2dial.field_bulutsantralim_connector__create_date
 msgid "Created on"
-msgstr "Created on"
+msgstr ""
 
 #. module: verimor_bulutsantralim_click2dial
 #: model:ir.model.fields,field_description:verimor_bulutsantralim_click2dial.field_bulutsantralim_connector__display_name
 msgid "Display Name"
-msgstr "Display Name"
+msgstr ""
 
 #. module: verimor_bulutsantralim_click2dial
 #: model:ir.model.fields,field_description:verimor_bulutsantralim_click2dial.field_bulutsantralim_connector__id
 msgid "ID"
-msgstr "ID"
+msgstr ""
 
 #. module: verimor_bulutsantralim_click2dial
 #: model:ir.model.fields,help:verimor_bulutsantralim_click2dial.field_bulutsantralim_connector__manual_answer
@@ -107,55 +107,52 @@ msgid ""
 "(Normally, the extension will open automatically and the caller will be "
 "called)."
 msgstr ""
-"If its value is true, it waits for the extension to pick up the phone "
-"(Normally, the extension will open automatically and the caller will be "
-"called)."
 
 #. module: verimor_bulutsantralim_click2dial
 #: model:ir.model.constraint,message:verimor_bulutsantralim_click2dial.constraint_res_users_unique_internal_number
 msgid "Internal number must be unique per user!"
-msgstr "Internal number must be unique per user!"
+msgstr ""
 
 #. module: verimor_bulutsantralim_click2dial
 #: model:ir.model.fields,field_description:verimor_bulutsantralim_click2dial.field_bulutsantralim_connector____last_update
 msgid "Last Modified on"
-msgstr "Last Modified on"
+msgstr ""
 
 #. module: verimor_bulutsantralim_click2dial
 #: model:ir.model.fields,field_description:verimor_bulutsantralim_click2dial.field_bulutsantralim_connector__write_uid
 msgid "Last Updated by"
-msgstr "Last Updated by"
+msgstr ""
 
 #. module: verimor_bulutsantralim_click2dial
 #: model:ir.model.fields,field_description:verimor_bulutsantralim_click2dial.field_bulutsantralim_connector__write_date
 msgid "Last Updated on"
-msgstr "Last Updated on"
+msgstr ""
 
 #. module: verimor_bulutsantralim_click2dial
 #: model:ir.model.fields,field_description:verimor_bulutsantralim_click2dial.field_bulutsantralim_connector__manual_answer
 msgid "Manual Answer?"
-msgstr "Manual Answer?"
+msgstr ""
 
 #. module: verimor_bulutsantralim_click2dial
 #. odoo-python
 #: code:addons/verimor_bulutsantralim_click2dial/models/phone_common.py:0
 #, python-format
 msgid "Missing internal number"
-msgstr "Missing internal number"
+msgstr ""
 
 #. module: verimor_bulutsantralim_click2dial
 #. odoo-python
 #: code:addons/verimor_bulutsantralim_click2dial/models/phone_common.py:0
 #, python-format
 msgid "Missing phone number"
-msgstr "Missing phone number"
+msgstr ""
 
 #. module: verimor_bulutsantralim_click2dial
 #. odoo-python
 #: code:addons/verimor_bulutsantralim_click2dial/models/bulutsantralim_connector.py:0
 #, python-format
 msgid "No answer."
-msgstr "No answer."
+msgstr ""
 
 #. module: verimor_bulutsantralim_click2dial
 #. odoo-javascript
@@ -163,53 +160,52 @@ msgstr "No answer."
 #: code:addons/verimor_bulutsantralim_click2dial/static/src/xml/bulutsantralim_click2dial.xml:0
 #, python-format
 msgid "Open Caller"
-msgstr "Open Caller"
+msgstr ""
 
 #. module: verimor_bulutsantralim_click2dial
 #: model_terms:ir.ui.view,arch_db:verimor_bulutsantralim_click2dial.view_bulutsantralim_connector_form
 msgid "Optional Settings"
-msgstr "Optional Settings"
+msgstr ""
 
 #. module: verimor_bulutsantralim_click2dial
 #: model:ir.model.fields,help:verimor_bulutsantralim_click2dial.field_bulutsantralim_connector__call_timeout
 msgid ""
 "Timeout for call in seconds, must be between 10 and 60 seconds (default 30)"
 msgstr ""
-"Timeout for call in seconds, must be between 10 and 60 seconds (default 30)"
 
 #. module: verimor_bulutsantralim_click2dial
 #: model:ir.model,name:verimor_bulutsantralim_click2dial.model_res_users
 msgid "User"
-msgstr "User"
+msgstr ""
 
 #. module: verimor_bulutsantralim_click2dial
 #: model:ir.model.fields,field_description:verimor_bulutsantralim_click2dial.field_res_users__internal_number
 msgid "User Internal Number"
-msgstr "User Internal Number"
+msgstr ""
 
 #. module: verimor_bulutsantralim_click2dial
 #. odoo-python
 #: code:addons/verimor_bulutsantralim_click2dial/models/bulutsantralim_connector.py:0
 #, python-format
 msgid "User is busy."
-msgstr "User is busy."
+msgstr ""
 
 #. module: verimor_bulutsantralim_click2dial
 #: model:ir.model.fields,help:verimor_bulutsantralim_click2dial.field_res_users__internal_number
 msgid "User's internal phone number."
-msgstr "User's internal phone number."
+msgstr ""
 
 #. module: verimor_bulutsantralim_click2dial
 #: model:ir.model.fields,field_description:verimor_bulutsantralim_click2dial.field_bulutsantralim_connector__api_key
 msgid "Verimor Bulutsantralim API Key"
-msgstr "Verimor Bulutsantralim API Key"
+msgstr ""
 
 #. module: verimor_bulutsantralim_click2dial
 #: model_terms:ir.ui.view,arch_db:verimor_bulutsantralim_click2dial.view_bulutsantralim_connector_form
 msgid "Verimor Bulutsantralim Configuration"
-msgstr "Verimor Bulutsantralim Configuration"
+msgstr ""
 
 #. module: verimor_bulutsantralim_click2dial
 #: model:ir.model,name:verimor_bulutsantralim_click2dial.model_bulutsantralim_connector
 msgid "Verimor Bulutsantralim Connector"
-msgstr "Verimor Bulutsantralim Connector"
+msgstr ""
