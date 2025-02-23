@@ -69,6 +69,7 @@
         <record id="product_product_tree_price_view" model="ir.ui.view">
             <field name="name">product.product.price.tree</field>
             <field name="model">product.product</field>
+            <field name="priority" eval="999"/>
             <field name="inherit_id" ref="product.product_product_tree_view" />
             <field name="arch" type="xml">
                 <field name="lst_price" position="replace">
@@ -77,6 +78,12 @@
                 <xpath expr="//field[@name='attr_price']" position="attributes">
                     <attribute name="string">Satış Fiyatı</attribute>
                 </xpath>
+
+                <field name="qty_available" position="before">
+                    <field name="qty_available_merkez" string="Merkez Depo" widget="float_time"/>
+                    <field name="qty_available_sincan" string="Sincan Depo" widget="float_time"/>
+                </field>
+
             </field>
         </record>
 
