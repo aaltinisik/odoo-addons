@@ -7,6 +7,11 @@
             <field name="model">mrp.production</field>
             <field name="type">form</field>
             <field name="arch" type="xml">
+
+                <xpath expr="//field[@name='product_id']" position="after">
+                    <field name="process_id"/>
+                </xpath>
+
                 <xpath expr="//button[@name='do_unreserve']" position="after">
                     <button name="button_print_prod_order" string="Print Production Order" type="object"/>
                 </xpath>
@@ -27,7 +32,7 @@
                 </xpath>
                 <xpath expr="//field[@name='user_id']" position="replace"/>
                 <!-- <xpath expr="//field[@name='location_src_id']" position='replace'/> -->
-                <xpath expr="//field[@name='location_dest_id']" position='replace'/>
+                <!-- <xpath expr="//field[@name='location_dest_id']" position='replace'/> -->
                 <xpath expr="//form//field[@name='product_id']" position='attributes'>
                     <attribute name="domain">[('has_production_bom','=',True)]</attribute>
                     <attribute name="class"></attribute>
@@ -37,19 +42,29 @@
                 <field name="date_finished" />
                 </xpath>
 
-                <xpath expr="//field[@name='bom_id']" position="after">
+                <xpath expr="//field[@name='process_id']" position="after">
                     <field name="priority"/>
                     <field name="date_planned"/>
                     <field name="date_start2"/>
                     <field name="date_finished2" invisible="1"/>
+                    <field name="x_note"/>
+                    <field name="sale_note"/>
+                </xpath>
+                <xpath expr="//field[@name='components_availability']" position="after">
+                    <field name="date_finished"/>
+                    <field name="origin"/>
+                    <field name="sale_id"/>
+                    <field name="procurement_group_id" />
+                    <field name="x_makine"/>
+                    <field name="x_operator"/>
                 </xpath>
                 <!-- TODO: migration of commented fields -->
                 <!-- <xpath expr="//field[@name='availability']" position="after">
                     <field name="location_src_id"/>
                     <field name="location_dest_id"/>
                 </xpath> -->
-                <field name="location_src_id"/>
-                <field name="location_dest_id"/>
+                <!-- <field name="location_src_id"/>
+                <field name="location_dest_id"/> -->
                 <!-- <xpath expr="//field[@name='origin']" position="after">
                     <field name="sale_id" readonly="1"/>
                     <field name="procurement_group_id"/>
@@ -115,6 +130,15 @@
             <field name="date_planned_start" position="after">
                 <field name="priority"/>
             </field>
+
+            <field name="origin" position="before">
+                <field name="process_id"/>
+            </field>
+
+            <xpath expr="//tree" position="attributes">
+                <attribute name="default_order">priority desc, date_planned_start desc</attribute>
+            </xpath>
+
         </field>
         </record>
 
@@ -128,7 +152,41 @@
                 <filter string="Operatör" name="x_operator" domain="[]" context="{'group_by':'x_operator'}"/>
                 <filter string="Öncelik" name="priority" domain="[]" context="{'group_by':'priority'}"/>
             </filter>
+
+            <filter name="planning_issues" position="after">
+                <separator/>
+                <filter name="lastmonthplanned" string="Geçen Ay Bitenler" domain="[('date_finished','&gt;=', (context_today() + relativedelta(months=-1)).strftime('%Y-%m-01 00:00:00')), ('date_finished','&lt;=', context_today().strftime('%Y-%m-01 00:00:00'))]"/>
+                <filter name="thismonthplanned" string="Bu Ay bitenler" domain="[('date_finished','&gt;=', context_today().strftime('%Y-%m-01 00:00:00')), ('date_finished','&lt;=', context_today().strftime('%Y-%m-%d'))]"/>
+                <separator/>
+                <filter name="bugun" string="Bugün Açılanlar" domain="[('create_date','&gt;=',(context_today()+relativedelta(days=0)).strftime('%Y-%m-%d 00:00:00')), ('create_date','&lt;=',(context_today()+relativedelta(days=0)).strftime('%Y-%m-%d 23:59:59'))]"/>
+                <filter string="Dün Açılanlar" name="yesterday" domain="[ ('create_date','&gt;=',(context_today()+relativedelta(days=-1)).strftime('%Y-%m-%d 00:00:00')), ('create_date','&lt;=',(context_today()+relativedelta(days=-1)).strftime('%Y-%m-%d 23:59:59'))]"/>
+                <filter string="Son 3 Gün Açılanlar" name="threedaydel" domain="[('create_date','&gt;=',(context_today()+relativedelta(days=-2)).strftime('%Y-%m-%d 00:00:00')), ('create_date','&lt;=',(context_today()+relativedelta(days=0)).strftime('%Y-%m-%d 23:59:59'))]" />
+                <filter string="Geçen Hafta Açılanlar" name="lastweekdel" domain="[('create_date','&gt;=',(context_today()+relativedelta(weeks=-1,days=0)).strftime('%Y-%m-%d 00:00:00')), ('create_date','&lt;=',(context_today()+relativedelta(weeks=-1,days=7)).strftime('%Y-%m-%d 23:59:59'))]"/>
+                <separator/>
+            </filter>
         </field>
+        </record>
+
+        <record id="mrp_production_tree_without_route" model="ir.ui.view">
+            <field name="name">mrp.production.tree.without.route</field>
+            <field name="model">mrp.production</field>
+            <field name="arch" type="xml">
+                <tree decoration-bf="message_needaction==True" default_order="priority desc,name asc" decoration-danger="date_planned_start&lt;current_date and state not in ('done','cancel')" decoration-info="sale_id != False" decoration-success="state=='progress'" decoration-muted="state in ('done','cancel')" string="Manufacturing Orders">
+                    <field name="message_needaction" invisible="1"/>
+                    <field name="name"/>
+                    <field name="date_planned_start"/>
+                    <field name="date_finished"/>
+                    <field name="priority"/>
+                    <field name="product_id"/>
+                    <field name="origin"/>
+                    <field name="product_qty" sum="Total Qty" string="Quantity" widget="uom" options="{'uom_field':'product_uom_id'}"/>
+                    <field name="product_uom_id" string="ÖB" options="{'no_open':True,'no_create':True}" groups="uom.group_uom"/>
+                    <field name="x_makine_kod" string="Makine"/>
+                    <field name="x_operator" string="Operatör"/>
+                    <field name="sale_id" string="Sipariş"/>
+                    <field name="state"/>
+                </tree>
+            </field>
         </record>
 
         <record id="mrp_enjek_menu" model="ir.actions.act_window">
@@ -136,6 +194,7 @@
             <field name="type">ir.actions.act_window</field>
             <field name="res_model">mrp.production</field>
             <field name="view_mode">tree,form</field>
+            <field name="view_id" ref="mrp_production_tree_without_route"/>
             <!-- <field name="priority">1</field> -->
             <field name="domain">[["process_id","ilike","enjeksiyon"]]</field>
             <field name="context">{'search_default_todo':1}</field>
@@ -154,6 +213,7 @@
             <field name="type">ir.actions.act_window</field>
             <field name="res_model">mrp.production</field>
             <field name="view_mode">tree,form</field>
+            <field name="view_id" ref="mrp_production_tree_without_route"/>
             <!-- <field name="priority">1</field> -->
             <field name="domain">[["process_id","=",2]]</field>
             <field name="context">{'search_default_todo':1}</field>
@@ -172,6 +232,7 @@
             <field name="type">ir.actions.act_window</field>
             <field name="res_model">mrp.production</field>
             <field name="view_mode">tree,form</field>
+            <field name="view_id" ref="mrp_production_tree_without_route"/>
             <!-- <field name="priority">1</field> -->
             <field name="domain">[["process_id","=",8]]</field>
             <field name="context">{'search_default_todo':1}</field>
@@ -194,6 +255,7 @@
             <field name="type">ir.actions.act_window</field>
             <field name="res_model">mrp.production</field>
             <field name="view_mode">tree,form</field>
+            <field name="view_id" ref="mrp_production_tree_without_route"/>
             <!-- <field name="priority">1</field> -->
             <field name="domain">[["process_id","=",10]]</field>
             <field name="context">{'search_default_todo':1}</field>
@@ -213,6 +275,7 @@
             <field name="type">ir.actions.act_window</field>
             <field name="res_model">mrp.production</field>
             <field name="view_mode">tree,form</field>
+            <field name="view_id" ref="mrp_production_tree_without_route"/>
             <!-- <field name="priority">1</field> -->
             <field name="domain">["|",["process_id","ilike","basit montaj"],["process_id","ilike","ayrıntılı montaj"]]</field>
             <field name="context">{'search_default_todo':1}</field>
@@ -231,6 +294,7 @@
             <field name="type">ir.actions.act_window</field>
             <field name="res_model">mrp.production</field>
             <field name="view_mode">tree,form</field>
+            <field name="view_id" ref="mrp_production_tree_without_route"/>
             <!-- <field name="priority">1</field> -->
             <field name="domain">[["process_id","=",5]]</field>
             <field name="context">{'search_default_todo':1}</field>
@@ -252,6 +316,7 @@
             <field name="type">ir.actions.act_window</field>
             <field name="res_model">mrp.production</field>
             <field name="view_mode">tree,form</field>
+            <field name="view_id" ref="mrp_production_tree_without_route"/>
             <!-- <field name="priority">1</field> -->
             <field name="domain">[["process_id","=",16]]</field>
             <field name="context">{'search_default_todo':1}</field>

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 {
     "name": "change_partner_accounts",
     "description": """
@@ -8,9 +7,15 @@
     "license": "LGPL-3",
     "website": "https://github.com/yibudak",
     "category": "Accounting",
-    "version": "13.0.0.1.0",
+    "version": "16.0.0.1.0",
     # any module necessary for this one to work correctly
-    "depends": ["base", "altinkaya_base", "account", "account_financial_risk"],
+    "depends": [
+        "altinkaya_base",
+        "sale",
+        "account",
+        "account_financial_risk",
+        "currency_difference_invoice",
+    ],
     # always loaded
     "data": [
         # 'security/ir.model.access.csv',

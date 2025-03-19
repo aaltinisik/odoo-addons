@@ -22,28 +22,23 @@ class MrpProduction(models.Model):
     sale_id = fields.Many2one("sale.order", string="Sale Order")
     sale_note = fields.Html("Sale Note", related="sale_id.note", readonly=True)
     active_rule_id = fields.Many2one("stock.rule", string="Active Rule")
-    date_planned = fields.Datetime("Scheduled Date")
-    date_start2 = fields.Datetime("Start Date")
-    date_finished2 = fields.Datetime("End Date")
-    priority = fields.Selection(
-        [("0", "Not urgent"), ("1", "Normal"), ("2", "Urgent"), ("3", "Very Urgent")],
-        string="Priority",
-        default="0",
+    date_planned = fields.Datetime("Planned Date")
+    date_start2 = fields.Datetime("Date Start")
+    date_finished2 = fields.Datetime("Date End")
+    process_id = fields.Many2one(
+        "mrp.routing",
+        string="Rota",
+        readonly=True,
+        related="bom_id.routing_id",
+        store=True,
     )
-    # process_id = fields.Many2one(
-    #     "mrp.routing",
-    #     string="Rota",
-    #     readonly=True,
-    #     related="bom_id.routing_id",
-    #     store=True,
-    # )
     x_operator = fields.Many2one("hr.employee", "Uretimi Yapan Operator")
-    x_note = fields.Text("Not", size=256)
+    x_note = fields.Text("Note")
     # TODO: @dogan workcenter_id alanini kullanabiliriz
     x_makine = fields.Many2one("x.makine", "Uretim Yapilan Makine")
     x_makine_kod = fields.Char(related="x_makine.x_kod", string="Makine", readonly=1)
     procurement_group_name = fields.Char(
-        compute="_get_procurement_group_name", string="Procurement Group", readonly=True
+        compute="_get_procurement_group_name", string="Procurement Group Name", readonly=True
     )
 
     def _generate_moves(self):

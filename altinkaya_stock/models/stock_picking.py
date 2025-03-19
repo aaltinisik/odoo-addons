@@ -69,7 +69,7 @@ class StockPicking(models.Model):
     )
     sale_note = fields.Html("Sale Note", related="sale_id.note", readonly=True)
     trimmed_sale_note = fields.Text(
-        "Sale Note",
+        "Trimmed Sale Note",
         compute="_compute_trimmed_sale_note",
         readonly=True,
     )
@@ -100,16 +100,3 @@ class StockPicking(models.Model):
                 ].text_from_html(picking.sale_note, max_chars=50)
             else:
                 picking.trimmed_sale_note = ""
-
-    def open_record(self):
-        form_id = self.env.ref("stock.view_picking_form")
-        return {
-            "type": "ir.actions.act_window",
-            "res_model": "stock.picking",
-            "res_id": self.id,
-            "view_type": "form",
-            "view_mode": "form",
-            "view_id": form_id.id,
-            "context": {},
-            "target": "current",
-        }
