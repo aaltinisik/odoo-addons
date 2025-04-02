@@ -1,4 +1,5 @@
 from odoo import api, fields, models
+from odoo.tools.safe_eval import safe_eval
 
 
 class XMakine(models.Model):
@@ -37,9 +38,6 @@ class MrpProduction(models.Model):
     # TODO: @dogan workcenter_id alanini kullanabiliriz
     x_makine = fields.Many2one("x.makine", "Uretim Yapilan Makine")
     x_makine_kod = fields.Char(related="x_makine.x_kod", string="Makine", readonly=1)
-    procurement_group_name = fields.Char(
-        compute="_get_procurement_group_name", string="Procurement Group Name", readonly=True
-    )
 
     def _generate_moves(self):
         if self.env.context.get("context", {}).get("migration", False):
@@ -63,13 +61,6 @@ class MrpProduction(models.Model):
             production.move_raw_ids._action_confirm()
             production.move_raw_ids._action_assign()
         return True
-
-    def _get_procurement_group_name(self):
-        for mo in self:
-            if mo.move_finished_ids:
-                mo.id = mo.move_finished_ids[0].group_id.name
-            else:
-                mo.id = False
 
     def get_product_route(self):
         def _get_next_moves(move_id):
@@ -111,19 +102,18 @@ class MrpProduction(models.Model):
             else:
                 mo.id = False
 
-    # TODO: migration 16.0
-    # def name_search(self, name, args=None, operator="ilike", limit=80):
+    # @api.model
+    # def name_search(self, name="", args=None, operator="ilike", limit=100):
     #     if name:
     #         args += [("move_finished_ids[0].group_id.name", operator, name)]
     #     ids = self.search(args, limit=limit)
     #     return ids.name_get()
 
-    # TODO: migration 16.0
-    # @api.onchange("routing_id")
-    # def onchange_routing_id(self):
-    #     if self.routing_id.location_id:
-    #         self.location_src_id = self.routing_id.location_id
-    #         self.location_dest_id = self.routing_id.location_id
+    @api.onchange("process_id")
+    def onchange_routing_id(self):
+        if self.process_id.location_id:
+            self.location_src_id = self.process_id.location_id
+            self.location_dest_id = self.process_id.location_id
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -158,26 +148,33 @@ class MrpProduction(models.Model):
 
     def action_print_product_label(self):
         self.ensure_one()
-        aw_obj = self.env["ir.actions.act_window"].with_context(
-            {"default_restrict_single": True}
+        action = (
+            self.env.ref("product_label_print.action_print_pack_barcode_wiz")
+            .sudo()
+            .read()[0]
         )
-        action = aw_obj.for_xml_id(
-            "product_label_print", "action_print_pack_barcode_wiz"
-        )
-        action.update(
-            {
-                "context": {
-                    "default_restrict_single": True,
-                    "active_ids": [self.product_id.id],
-                }
-            }
-        )
+
+        # Ensure context is a dictionary
+        action_context = action.get("context")
+        if isinstance(action_context, str):
+            try:
+                action_context = safe_eval(action_context)  # Convert string to dict
+            except Exception:
+                action_context = {}  # Fallback to empty dict if conversion fails
+
+        # Merge context properly
+        action["context"] = {
+            **action_context,
+            "default_restrict_single": True,
+            "active_ids": [self.product_id.id],
+        }
         return action
 
-    # TODO: check migration 16.0
-    # def action_set_production_started(self):
-    #     for production in self:
-    #         production.write({"state": "planned", "date_start2": fields.Datetime.now()})
+    def action_set_production_started(self):
+        for production in self:
+            production.write(
+                {"state": "progress", "date_start2": fields.Datetime.now()}
+            )
 
     # TODO: this function changed to _update_raw_moves. Check the changes.
     # def _update_raw_move(self, bom_line, line_data):
